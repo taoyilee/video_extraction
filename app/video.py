@@ -1,3 +1,4 @@
+import configparser as cp
 import os
 
 import cv2
@@ -13,49 +14,78 @@ class Video:
     fourcc = None
     frame_cnt: int = None
     format = None
+    config: cp.ConfigParser = cp.ConfigParser()
+    cap = None
+    downsize_factor = 1
 
-    def __init__(self, filename):
+    def __init__(self, filename, config_file=None):
         self.filename = filename
+        if config_file is None:
+            script_directory = os.path.dirname(os.path.realpath(__file__))
+            config_file = os.path.join(script_directory, "default_config.ini")
+        print(f"Using config file {config_file}")
+        if not os.path.isfile(config_file):
+            raise FileNotFoundError(f"{config_file} does not exist")
+        self.config.read(config_file)
+
         if not os.path.isfile(self.filename):
             raise FileNotFoundError(f"{self.filename} does not exist")
+        self.parse_config()
+        self.cap = cv2.VideoCapture(self.filename)
         self.extract_properties()
 
     def extract_properties(self):
-        cap = cv2.VideoCapture(self.filename)
-        self.fps = cap.get(cv2.CAP_PROP_FPS)
-        self.pos_msec = cap.get(cv2.CAP_PROP_POS_MSEC)
-        self.pos_frames = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
-        self.pos_avi_ratio = cap.get(cv2.CAP_PROP_POS_AVI_RATIO)
-        self.frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        self.fourcc = cap.get(cv2.CAP_PROP_FOURCC)
-        self.frame_cnt = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        self.format = cap.get(cv2.CAP_PROP_FORMAT)
 
-        cap.release()
+        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+        self.pos_msec = self.get_current_frame_time()
+        self.pos_frames = self.get_current_frame()
+        self.pos_avi_ratio = self.cap.get(cv2.CAP_PROP_POS_AVI_RATIO)
+        self.frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.frame_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.fourcc = self.cap.get(cv2.CAP_PROP_FOURCC)
+        self.frame_cnt = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.format = self.cap.get(cv2.CAP_PROP_FORMAT)
 
-    def show_frames(self):
-        cap = cv2.VideoCapture(self.filename)
+    def get_current_frame_time(self):
+        return self.cap.get(cv2.CAP_PROP_POS_MSEC)
+
+    def get_current_frame(self):
+        return int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+
+    def parse_config(self):
+        self.downsize_factor = 1 / self.config["DEFAULT"].getfloat("downsize_factor")
+
+    def rewind(self):
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
+    def close(self):
+        self.cap.release()
+
+    def extract_frames(self, show=False):
+        self.rewind()
         output_dir = "captures"
         os.makedirs(output_dir, exist_ok=True)
 
         frame_no = 0
-        downsample = 10
-        while (cap.isOpened()):
-            for i in range(downsample):
-                ret, frame = cap.read()
-            if frame is None:
+        while self.cap.isOpened():
+            for i in range(int(self.config["DEFAULT"].getfloat("time_downsample"))):
+                ret, frame = self.cap.read()
+            if not ret:
                 break
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+            gray = cv2.resize(gray, (0, 0), fx=self.downsize_factor, fy=self.downsize_factor)
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            frame_status = "{:.2f}s #{}".format(self.get_current_frame_time() / 1000, self.get_current_frame())
+            gray = cv2.putText(gray, frame_status, (0, 13), font, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
             cv2.imshow('frame', gray)
-            scene_file_name = os.path.join(output_dir, f"scene_{frame_no}.png")
+            scene_file_name = os.path.join(output_dir, "scene_{:03d}.png".format(frame_no))
             cv2.imwrite(scene_file_name, gray)
             frame_no += 1
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
-        cap.release()
         cv2.destroyAllWindows()
 
     def __repr__(self):

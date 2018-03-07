@@ -12,6 +12,10 @@ class TestVideo(TestCase):
         with self.assertRaises(FileNotFoundError):
             Video("nonexistent_file.mp4")
 
+    def test_ConfigFileNotFound(self):
+        with self.assertRaises(FileNotFoundError):
+            Video("nonexistent_file.mp4", "nonexistent_file.ini")
+
 
 if __name__ == '__main__':
     unittest.main()
