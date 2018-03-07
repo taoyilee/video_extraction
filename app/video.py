@@ -16,6 +16,8 @@ class Video:
 
     def __init__(self, filename):
         self.filename = filename
+        if not os.path.isfile(self.filename):
+            raise FileNotFoundError(f"{self.filename} does not exist")
         self.extract_properties()
 
     def extract_properties(self):
