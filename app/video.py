@@ -2,6 +2,7 @@ import configparser as cp
 import os
 
 import cv2
+import numpy as np
 
 from app.frame import Frame
 from app.time_series import TimeSeries
@@ -53,7 +54,7 @@ class Video:
         return self.cap.get(cv2.CAP_PROP_POS_MSEC)
 
     def get_current_frame(self):
-        return int(self.cap.get(cv2.CAP_PROP_POS_FRAMES)-1)
+        return int(self.cap.get(cv2.CAP_PROP_POS_FRAMES) - 1)
 
     def parse_config(self):
         self.downsize_factor = 1 / self.config["DEFAULT"].getfloat("downsize_factor")
@@ -94,23 +95,15 @@ class Video:
 
         generator = self.frame_generator()
         for f in generator:
-            frame, frame_no, frame_time = f
-            gray = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+            gray = cv2.cvtColor(f.frame, cv2.COLOR_GRAY2RGB)
             gray = cv2.resize(gray, (0, 0), fx=self.downsize_factor, fy=self.downsize_factor)
             font = cv2.FONT_HERSHEY_SIMPLEX
-            frame_status = "{:.2f}s #{}".format(frame_time / 1000, frame_no)
+            frame_status = "{:.2f}s #{}".format(f.frame_time / 1000, f.frame_no)
             gray = cv2.putText(gray, frame_status, (0, 13), font, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
             cv2.imshow('frame', gray) if show else None
-            scene_file_name = os.path.join(output_dir, "scene_{:03d}.png".format(frame_no))
-            detect_file_name = os.path.join(output_dir, "detect_{:03d}.png".format(frame_no))
+            scene_file_name = os.path.join(output_dir, "scene_{:03d}.png".format(f.frame_no))
+            print(f"Writing {scene_file_name}, {frame_status}")
             cv2.imwrite(scene_file_name, gray)
-            cv2.imwrite(detect_file_name,
-                        self.match_template(gray, os.path.join(self.script_directory, "sprites/00_huen.png")))
-            frame_no += 1
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-
-        cv2.destroyAllWindows()
 
     def __repr__(self):
         return_string = "Video {} ".format(self.filename)
