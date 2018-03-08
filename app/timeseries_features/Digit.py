@@ -24,7 +24,7 @@ class Digit:
         mse = np.zeros_like(range(3))
         for i in range(3):
             est[i], mse[i] = self._estimate_digit(self.shift(i))
-        return est[np.argmin(mse)]
+        return est[np.argmin(mse)] if min(mse) < 80 else 0
 
     def _estimate_digit(self, frame):
         mse = np.zeros_like(range(10))

@@ -11,7 +11,7 @@ class Frame:
         self.frame_time = frame_time
         self.h = np.shape(self.frame)[0]
         self.w = np.shape(self.frame)[1]
-        print(f"w={self.w} h={self.h}")
+
 
     def match_template(self, template):
         # methods = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
@@ -23,7 +23,7 @@ class Frame:
         h, w = temp_img.shape[0:2]
         # print(f"Template W/H = {w}/{h}")
         method = eval('cv2.TM_SQDIFF_NORMED')
-        print(f"{np.shape(self.frame)} {np.shape(temp_img)}")
+        # print(f"{np.shape(self.frame)} {np.shape(temp_img)}")
         res = cv2.matchTemplate(self.frame, temp_img, method)
         res -= np.min(res)
         res /= np.max(res)
