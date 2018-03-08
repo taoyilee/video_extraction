@@ -2,7 +2,9 @@ import configparser as cp
 import os
 
 import cv2
-import numpy as np
+
+from app.frame import Frame
+from app.time_series import TimeSeries
 
 
 class Video:
@@ -51,7 +53,7 @@ class Video:
         return self.cap.get(cv2.CAP_PROP_POS_MSEC)
 
     def get_current_frame(self):
-        return int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+        return int(self.cap.get(cv2.CAP_PROP_POS_FRAMES)-1)
 
     def parse_config(self):
         self.downsize_factor = 1 / self.config["DEFAULT"].getfloat("downsize_factor")
@@ -62,48 +64,41 @@ class Video:
     def close(self):
         self.cap.release()
 
-    def match_template(self, img, template):
-        # methods = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
-        #           'cv2.TM_CCORR_NORMED', 'cv2.TM_SQDIFF', 'cv2.TM_SQDIFF_NORMED']
-        if not os.path.isfile(template):
-            raise FileNotFoundError(f"{config_file} does not exist")
-        temp_img = cv2.imread(template)
-        w, h = temp_img.shape[0:2]
-        # print(f"Template W/H = {w}/{h}")
-        method = eval('cv2.TM_CCOEFF')
-        res = cv2.matchTemplate(img, temp_img, method)
-        res -= np.min(res)
-        res /= np.max(res)
-        res *= 255
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+    def skip_frames(self, frames_to_skip):
+        for i in range(frames_to_skip):
+            self.cap.read()
 
-        if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
-            top_left = min_loc
-        else:
-            top_left = max_loc
-        bottom_right = (top_left[0] + w, top_left[1] + h)
-        cv2.rectangle(img, top_left, bottom_right, 255, 2)
-        res_out = np.zeros_like(img)
-        res_out[0:res.shape[0], 0:res.shape[1], :] = cv2.cvtColor(res, cv2.COLOR_GRAY2RGB)
-        return np.concatenate([res_out, img], axis=1)
+    def frame_generator(self):
+        self.rewind()
+        time_step = int(self.config["DEFAULT"].getfloat("time_downsample"))
+        for frame_no in range(0, self.frame_cnt, time_step):
+            ret, frame = self.cap.read()
+            if not ret:
+                break
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            frame = cv2.resize(frame, (0, 0), fx=self.downsize_factor, fy=self.downsize_factor)
+            yield Frame(frame, self.get_current_frame(), self.get_current_frame_time())
+            self.skip_frames(time_step)
+
+    def extract_time_series(self):
+        self.rewind()
+        time_series = TimeSeries()
+        for f in self.frame_generator():
+            time_series.add_frame(f)
+        return time_series
 
     def extract_frames(self, show=False):
         self.rewind()
         output_dir = "captures"
         os.makedirs(output_dir, exist_ok=True)
 
-        frame_no = 0
-        while self.cap.isOpened():
-            for i in range(int(self.config["DEFAULT"].getfloat("time_downsample"))):
-                ret, frame = self.cap.read()
-            if not ret:
-                break
-
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            gray = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+        generator = self.frame_generator()
+        for f in generator:
+            frame, frame_no, frame_time = f
+            gray = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
             gray = cv2.resize(gray, (0, 0), fx=self.downsize_factor, fy=self.downsize_factor)
             font = cv2.FONT_HERSHEY_SIMPLEX
-            frame_status = "{:.2f}s #{}".format(self.get_current_frame_time() / 1000, self.get_current_frame())
+            frame_status = "{:.2f}s #{}".format(frame_time / 1000, frame_no)
             gray = cv2.putText(gray, frame_status, (0, 13), font, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
             cv2.imshow('frame', gray) if show else None
             scene_file_name = os.path.join(output_dir, "scene_{:03d}.png".format(frame_no))
